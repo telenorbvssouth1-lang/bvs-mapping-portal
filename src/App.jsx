@@ -1,25 +1,78 @@
 import React, { useState, useEffect } from "react";
 
-// Franchise IDs (from the BVS Mapping form). Password = "Network@" + last 4 digits of the ID.
-const FRANCHISE_IDS = [
-  "DDKH3007", "DDSKHI3002", "DKHI3004", "DSKZ3001", "SCHG5201", "SCMN1203",
-  "SDAL1202", "SDAY1201", "SDMJ1202", "SDUK1202", "SHUB1202", "SKHI1221",
-  "SKHI1232", "SKHI1235", "SKHI1241", "SKHI1244", "SKHI1251", "SKHI1253",
-  "SKHI1254", "SKHI1255", "SKHI1257", "SKHI1258", "SKHI1259", "SKHI1260",
-  "SKHI1262", "SKHI1265", "SKHI1266", "SKHI1268", "SKHI1271", "SKHI1272",
-  "SKHI1273", "SKHI1274", "SKHI1276", "SKHI1277", "SKHI1278", "SKHI1279",
-  "SKHI1280", "SKHI1282", "SKHI1283", "SKHI1285", "SKHI1287", "SKHI1288",
-  "SKHI1289", "SKHI1290", "SKHI1291", "SKHI1292", "SKHI1293", "SKHI1294",
-  "SKHZ5201", "SKLT5201", "SKRN5201", "SLRI7201", "SMST5201", "SNAS7201",
-  "SNKI1201", "SNKI7201", "SPJG5202", "SPSI1202", "SQSU5201", "SRIB1201",
-  "SSBI1202", "STRB1201", "SUET1207", "SUET1213", "SUET1214", "SUET1215",
-  "SUET1216", "SUET5201", "SUTH5201", "SZHB1201",
-];
-
-const FRANCHISES = FRANCHISE_IDS.reduce((acc, id) => {
-  acc[id] = { password: "Network@" + id.slice(-4) };
-  return acc;
-}, {});
+// Franchise ID -> password. Edit any password directly here.
+const FRANCHISES = {
+  DDKH3007: "3451595065",
+  DDSKHI3002: "3408866866",
+  DKHI3004: "3433335525",
+  DSKZ3001: "3493700373",
+  SCHG5201: "3498079591",
+  SCMN1203: "3464223868",
+  SDAL1202: "3493091115",
+  SDAY1201: "3433951800",
+  SDMJ1202: "3432734550",
+  SDUK1202: "3462131080",
+  SHUB1202: "3400986665",
+  SKHI1221: "3442159005",
+  SKHI1232: "3412405167",
+  SKHI1235: "3493300000",
+  SKHI1241: "3432039477",
+  SKHI1244: "3462677723",
+  SKHI1251: "3493330030",
+  SKHI1253: "3403712992",
+  SKHI1254: "3418093117",
+  SKHI1255: "3410859919",
+  SKHI1257: "3410867974",
+  SKHI1258: "3411809440",
+  SKHI1259: "3410871363",
+  SKHI1260: "3410854988",
+  SKHI1262: "3414500307",
+  SKHI1265: "3492574778",
+  SKHI1266: "3442608478",
+  SKHI1268: "3442666557",
+  SKHI1271: "3498688862",
+  SKHI1272: "3462205040",
+  SKHI1273: "3472000440",
+  SKHI1274: "3452288014",
+  SKHI1276: "3451807773",
+  SKHI1277: "3423465545",
+  SKHI1278: "3451746262",
+  SKHI1279: "3430022069",
+  SKHI1280: "3412801280",
+  SKHI1282: "3462244462",
+  SKHI1283: "3474193979",
+  SKHI1285: "3418235135",
+  SKHI1287: "3453587881",
+  SKHI1288: "3410261288",
+  SKHI1289: "3438062292",
+  SKHI1290: "3438005557",
+  SKHI1291: "3442902993",
+  SKHI1292: "3432371082",
+  SKHI1293: "3443006200",
+  SKHI1294: "3432667994",
+  SKHZ5201: "3464479993",
+  SKLT5201: "3495913499",
+  SKRN5201: "3493875859",
+  SLRI7201: "3468102352",
+  SMST5201: "3410228825",
+  SNAS7201: "3458343780",
+  SNKI1201: "3491800616",
+  SNKI7201: "3468537505",
+  SPJG5202: "3491800650",
+  SPSI1202: "3463051122",
+  SQSU5201: "3429515820",
+  SRIB1201: "3457216710",
+  SSBI1202: "3462139043",
+  STRB1201: "3462741821",
+  SUET1207: "3498078211",
+  SUET1213: "3410837680",
+  SUET1214: "3412266351",
+  SUET1215: "3477851100",
+  SUET1216: "3422882015",
+  SUET5201: "3403111136",
+  SUTH5201: "3410871018",
+  SZHB1201: "3492928830",
+};
 
 // Paste your deployed Google Apps Script Web App URL here to sync
 // submissions to your Google Sheet.
@@ -91,7 +144,13 @@ function jsonpRequest(url) {
 }
 
 export default function BVSPortal() {
-  const [franchiseId, setFranchiseId] = useState(null);
+  const [franchiseId, setFranchiseId] = useState(() => {
+    try {
+      return localStorage.getItem("bvs_logged_in_franchise") || null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [loginId, setLoginId] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -123,12 +182,17 @@ export default function BVSPortal() {
 
   function handleLogin() {
     const id = loginId.trim().toUpperCase();
-    const entry = FRANCHISES[id];
-    if (!entry || entry.password !== loginPass) {
+    const correctPassword = FRANCHISES[id];
+    if (!correctPassword || correctPassword !== loginPass) {
       setLoginError("ID or password is incorrect.");
       return;
     }
     setLoginError("");
+    try {
+      localStorage.setItem("bvs_logged_in_franchise", id);
+    } catch (e) {
+      // ignore — session just won't persist across refresh
+    }
     setFranchiseId(id);
   }
 
@@ -137,6 +201,11 @@ export default function BVSPortal() {
   }
 
   function handleLogout() {
+    try {
+      localStorage.removeItem("bvs_logged_in_franchise");
+    } catch (e) {
+      // ignore
+    }
     setFranchiseId(null);
     setLoginId("");
     setLoginPass("");
@@ -154,8 +223,14 @@ export default function BVSPortal() {
   function validate() {
     const e = {};
     if (!form.easyload.trim()) e.easyload = "Required";
+    else if (!/^03\d{9}$/.test(form.easyload.trim()))
+      e.easyload = 'Must be 11 digits, e.g. "03401118899"';
     if (!form.postpaid.trim()) e.postpaid = "Required";
+    else if (!/^03\d{9}$/.test(form.postpaid.trim()))
+      e.postpaid = 'Must be 11 digits, e.g. "03401118899"';
     if (!form.imei.trim()) e.imei = "Required";
+    else if (!/^\d{15}$/.test(form.imei.trim()))
+      e.imei = 'Must be 15 digits, e.g. "350925890354812"';
     if (!form.fsMapping) e.fsMapping = "Required";
     if (form.fsMapping === "Yes FS Mapping") {
       if (!form.easypaisaPos.trim()) e.easypaisaPos = "Required";
@@ -325,8 +400,9 @@ export default function BVSPortal() {
             <input
               className={inputClass}
               value={form.easyload}
-              onChange={(e) => updateField("easyload", e.target.value)}
-              placeholder="Your answer"
+              onChange={(e) => updateField("easyload", e.target.value.replace(/\D/g, "").slice(0, 11))}
+              placeholder="03401118899"
+              inputMode="numeric"
             />
             {errors.easyload && <p className="text-rose-500 text-xs mt-1">{errors.easyload}</p>}
           </Field>
@@ -344,8 +420,9 @@ export default function BVSPortal() {
             <input
               className={inputClass}
               value={form.postpaid}
-              onChange={(e) => updateField("postpaid", e.target.value)}
-              placeholder="Your answer"
+              onChange={(e) => updateField("postpaid", e.target.value.replace(/\D/g, "").slice(0, 11))}
+              placeholder="03401118899"
+              inputMode="numeric"
             />
             {errors.postpaid && <p className="text-rose-500 text-xs mt-1">{errors.postpaid}</p>}
           </Field>
@@ -354,8 +431,9 @@ export default function BVSPortal() {
             <input
               className={inputClass}
               value={form.imei}
-              onChange={(e) => updateField("imei", e.target.value)}
-              placeholder="Your answer"
+              onChange={(e) => updateField("imei", e.target.value.replace(/\D/g, "").slice(0, 15))}
+              placeholder="350925890354812"
+              inputMode="numeric"
             />
             {errors.imei && <p className="text-rose-500 text-xs mt-1">{errors.imei}</p>}
           </Field>
