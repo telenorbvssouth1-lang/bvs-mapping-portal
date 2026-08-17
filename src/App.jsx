@@ -163,12 +163,15 @@ export default function BVSPortal() {
   const [submitError, setSubmitError] = useState("");
 
   const [history, setHistory] = useState([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   useEffect(() => {
     if (franchiseId) loadHistory(franchiseId);
   }, [franchiseId]);
 
   function loadHistory(fid) {
+    setLoadingHistory(true);
+    // Show local cache immediately, then refresh from the sheet (source of truth for status).
     try {
       const raw = localStorage.getItem("bvs_submissions");
       const all = raw ? JSON.parse(raw) : [];
@@ -178,6 +181,28 @@ export default function BVSPortal() {
     } catch (e) {
       // ignore — local history is just a convenience view
     }
+
+    if (!APPS_SCRIPT_URL) {
+      setLoadingHistory(false);
+      return;
+    }
+
+    const url = `${APPS_SCRIPT_URL}?action=getSubmissions&franchiseId=${encodeURIComponent(fid)}`;
+    jsonpRequest(url)
+      .then((data) => {
+        if (data.status === "ok" && Array.isArray(data.submissions)) {
+          setHistory(
+            data.submissions.map((r) => ({
+              ...r,
+              submittedAt: r.timestamp,
+            }))
+          );
+        }
+      })
+      .catch(() => {
+        // sheet fetch failed — keep showing the local cache
+      })
+      .finally(() => setLoadingHistory(false));
   }
 
   function handleLogin() {
@@ -271,6 +296,7 @@ export default function BVSPortal() {
       if (data.status !== "ok") throw new Error(data.message || "Failed to save");
       setForm(emptyForm);
       setJustSubmitted(true);
+      loadHistory(franchiseId);
     } catch (err) {
       setSubmitError(
         "Saved locally, but couldn't sync to the sheet: " +
@@ -493,36 +519,56 @@ export default function BVSPortal() {
         </div>
 
         <div className="mt-10">
-          <h3 className="text-blue-950 font-bold text-sm mb-3">
-            Your submissions {history.length > 0 && `(${history.length})`}
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-blue-950 font-bold text-sm">
+              Your submissions {history.length > 0 && `(${history.length})`}
+            </h3>
+            <button
+              onClick={() => loadHistory(franchiseId)}
+              disabled={loadingHistory}
+              className="text-cyan-600 hover:text-cyan-800 text-xs font-bold uppercase disabled:opacity-50"
+            >
+              {loadingHistory ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
           {history.length === 0 ? (
             <p className="text-blue-300 text-sm">No mappings submitted yet.</p>
           ) : (
             <div className="space-y-2">
-              {history.map((r, i) => (
-                <div
-                  key={i}
-                  className="border-2 border-cyan-100 rounded-2xl px-4 py-3 text-sm bg-white"
-                >
-                  <div className="flex justify-between text-blue-300 text-xs mb-1.5">
-                    <span>{new Date(r.submittedAt).toLocaleString()}</span>
-                    <span className="text-cyan-600 font-semibold">{r.fsMapping}</span>
+              {history.map((r, i) => {
+                const status = r.status || "Pending";
+                const statusStyle =
+                  status === "Done"
+                    ? "bg-emerald-50 text-emerald-600 border-emerald-200"
+                    : status === "Rejected"
+                    ? "bg-rose-50 text-rose-600 border-rose-200"
+                    : "bg-amber-50 text-amber-600 border-amber-200";
+                return (
+                  <div
+                    key={i}
+                    className="border-2 border-cyan-100 rounded-2xl px-4 py-3 text-sm bg-white"
+                  >
+                    <div className="flex justify-between items-center text-blue-300 text-xs mb-1.5">
+                      <span>{new Date(r.submittedAt).toLocaleString()}</span>
+                      <span className={`border rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase ${statusStyle}`}>
+                        {status}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-blue-950 text-xs">
+                      <span>EasyLOAD: {r.easyload}</span>
+                      <span>Postpaid: {r.postpaid}</span>
+                      <span>IMEI: {r.imei}</span>
+                      <span>Seller: {r.sellerCode || "—"}</span>
+                      {r.fsMapping === "Yes FS Mapping" && (
+                        <>
+                          <span>EasyPaisa POS: {r.easypaisaPos}</span>
+                          <span>EP/FS User ID: {r.epFsUserId}</span>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-blue-950 text-xs">
-                    <span>EasyLOAD: {r.easyload}</span>
-                    <span>Postpaid: {r.postpaid}</span>
-                    <span>IMEI: {r.imei}</span>
-                    <span>Seller: {r.sellerCode || "—"}</span>
-                    {r.fsMapping === "Yes FS Mapping" && (
-                      <>
-                        <span>EasyPaisa POS: {r.easypaisaPos}</span>
-                        <span>EP/FS User ID: {r.epFsUserId}</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
