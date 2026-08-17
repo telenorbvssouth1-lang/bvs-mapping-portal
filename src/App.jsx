@@ -76,7 +76,7 @@ const FRANCHISES = {
 
 // Paste your deployed Google Apps Script Web App URL here to sync
 // submissions to your Google Sheet.
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwK70tydZg1lvJ56Q1DOHLyjIlurIipVhcfLwtgx4xZRHR0cskvNCDmX_wekittLEjR5g/exec";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw_aa01OLqgN9oJTuByWbcKxhCGVu3ogcecEveFGJW9HrSu5ze25aSUVgo69Yf-k2Fwxw/exec";
 
 const emptyForm = {
   easyload: "",
