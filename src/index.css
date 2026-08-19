@@ -1,3 +1,32 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Telenor brand colors: https://brand.telenor.com/group/identity/colors */
+.tel-input {
+  border-color: #B4FFFF;
+  transition: border-color 0.15s ease;
+}
+.tel-input:focus {
+  border-color: #00C8FF;
+}
+
+.tel-btn-primary {
+  background-color: #00C8FF;
+  transition: background-color 0.15s ease;
+}
+.tel-btn-primary:hover:not(:disabled) {
+  background-color: #00b0e0;
+}
+
+.tel-card {
+  border-color: #B4FFFF;
+}
+
+.tel-header-gradient {
+  background: linear-gradient(135deg, #070452 0%, #1C16C5 100%);
+}
+
+.tel-bg-gradient {
+  background: linear-gradient(180deg, #E8FDFF 0%, #FFFFFF 100%);
+}
