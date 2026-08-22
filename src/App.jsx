@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import * as XLSX from "xlsx";
 
 // Official Telenor brand colors (brand.telenor.com/group/identity/colors)
 const BRAND = {
@@ -259,11 +260,45 @@ function pct(n, total) {
   return Math.round((n / total) * 1000) / 10;
 }
 
+// Case-insensitive, whitespace-tolerant status matching. Anything that
+// isn't recognized as Done/Rejected falls back to Pending, since a blank
+// or unexpected cell in the sheet means "not yet processed."
+function normalizeStatus(raw) {
+  const s = (raw || "").toString().trim().toLowerCase();
+  if (s === "done") return "Done";
+  if (s === "rejected") return "Rejected";
+  return "Pending";
+}
+
+// Exports rows to an .xlsx file with the same column structure as the
+// Google Sheet (Timestamp, Franchise ID, EasyLOAD Number, ... Processed At).
+function exportRowsToXlsx(rows, filename) {
+  const sheetRows = rows.map((r) => ({
+    "Timestamp": r.timestamp ? new Date(r.timestamp).toLocaleString() : "",
+    "Franchise ID": r.franchiseId || "",
+    "EasyLOAD Number": r.easyload || "",
+    "Seller Code": r.sellerCode || "",
+    "Postpaid Number": r.postpaid || "",
+    "IMEI Number": r.imei || "",
+    "FS Mapping": r.fsMapping || "",
+    "EasyPaisa POS Number": r.easypaisaPos || "",
+    "EP/FS User ID": r.epFsUserId || "",
+    "Status": normalizeStatus(r.status),
+    "Rejection Reason": r.rejectionReason || "",
+    "Processed By": r.processedBy || "",
+    "Processed At": r.processedAt ? new Date(r.processedAt).toLocaleString() : "",
+  }));
+  const ws = XLSX.utils.json_to_sheet(sheetRows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Mappings");
+  XLSX.writeFile(wb, filename);
+}
+
 function computeKPIs(rows) {
   const total = rows.length;
-  const pending = rows.filter((r) => r.status === "Pending" || !r.status).length;
-  const completed = rows.filter((r) => r.status === "Done").length;
-  const rejected = rows.filter((r) => r.status === "Rejected").length;
+  const pending = rows.filter((r) => normalizeStatus(r.status) === "Pending").length;
+  const completed = rows.filter((r) => normalizeStatus(r.status) === "Done").length;
+  const rejected = rows.filter((r) => normalizeStatus(r.status) === "Rejected").length;
   const processedRows = rows.filter((r) => r.processedAt);
   const avgHrs =
     processedRows.length > 0
@@ -313,8 +348,8 @@ function computeFranchiseStats(rows) {
     }
     const f = map[id];
     f.total++;
-    if (r.status === "Done") f.completed++;
-    else if (r.status === "Rejected") {
+    if (normalizeStatus(r.status) === "Done") f.completed++;
+    else if (normalizeStatus(r.status) === "Rejected") {
       f.rejected++;
       const reason = r.rejectionReason || "Unspecified";
       f.rejectionReasons[reason] = (f.rejectionReasons[reason] || 0) + 1;
@@ -346,8 +381,8 @@ function computeTeamStats(rows) {
     if (!r.processedBy || !map[r.processedBy]) return;
     const m = map[r.processedBy];
     m.processed++;
-    if (r.status === "Done") m.completed++;
-    else if (r.status === "Rejected") m.rejected++;
+    if (normalizeStatus(r.status) === "Done") m.completed++;
+    else if (normalizeStatus(r.status) === "Rejected") m.rejected++;
     if (r.processedAt) {
       const h = (new Date(r.processedAt) - new Date(r.timestamp)) / 36e5;
       m.totalHrs += Math.max(h, 0);
@@ -364,7 +399,7 @@ function computeTeamStats(rows) {
 }
 
 function computeRejectionStats(rows) {
-  const rejectedRows = rows.filter((r) => r.status === "Rejected");
+  const rejectedRows = rows.filter((r) => normalizeStatus(r.status) === "Rejected");
   const reasonCounts = {};
   rejectedRows.forEach((r) => {
     const reason = r.rejectionReason || "Unspecified";
@@ -406,8 +441,8 @@ function computeDailyVolume(rows) {
     const day = new Date(r.timestamp).toISOString().slice(0, 10);
     if (!byDay[day]) byDay[day] = { total: 0, completed: 0, pending: 0, rejected: 0 };
     byDay[day].total++;
-    if (r.status === "Done") byDay[day].completed++;
-    else if (r.status === "Rejected") byDay[day].rejected++;
+    if (normalizeStatus(r.status) === "Done") byDay[day].completed++;
+    else if (normalizeStatus(r.status) === "Rejected") byDay[day].rejected++;
     else byDay[day].pending++;
   });
   return Object.entries(byDay).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([day, v]) => ({ day, ...v }));
@@ -481,8 +516,8 @@ function computeInsights(periodRows, prevRows, franchiseStats, teamStats, reject
       const change = pct(curTotal - prevTotal, prevTotal);
       insights.push(`Mapping volume is ${change >= 0 ? "up" : "down"} ${Math.abs(change)}% vs the previous period (${prevTotal} → ${curTotal}).`);
     }
-    const curRejPct = pct(periodRows.filter((r) => r.status === "Rejected").length, curTotal);
-    const prevRejPct = pct(prevRows.filter((r) => r.status === "Rejected").length, prevTotal);
+    const curRejPct = pct(periodRows.filter((r) => normalizeStatus(r.status) === "Rejected").length, curTotal);
+    const prevRejPct = pct(prevRows.filter((r) => normalizeStatus(r.status) === "Rejected").length, prevTotal);
     if (prevTotal > 0 && curTotal > 0) {
       insights.push(`Rejection rate is ${curRejPct <= prevRejPct ? "improving" : "worsening"} (${prevRejPct}% → ${curRejPct}%).`);
     }
@@ -514,7 +549,7 @@ const inputClass =
   "w-full bg-white outline-none rounded-2xl px-4 py-2.5 text-blue-950 placeholder-blue-300 text-sm border-2 tel-input";
 
 function StatusBadge({ status }) {
-  const s = status || "Pending";
+  const s = normalizeStatus(status);
   const style =
     s === "Done"
       ? "bg-emerald-50 text-emerald-600 border-emerald-200"
@@ -623,14 +658,14 @@ function MappingDetailModal({ record, onClose }) {
       <DetailRow label="Submitted" value={fmtDate(record.timestamp)} />
       <DetailRow label="Processed By" value={record.processedBy} />
       <DetailRow label="Processed At" value={fmtDate(record.processedAt)} />
-      {record.status === "Rejected" && (
+      {normalizeStatus(record.status) === "Rejected" && (
         <DetailRow label="Rejection Reason" value={record.rejectionReason} />
       )}
     </Modal>
   );
 }
 
-function DateFilterBar({ preset, setPreset, customStart, setCustomStart, customEnd, setCustomEnd, compare, setCompare }) {
+function DateFilterBar({ preset, setPreset, customStart, setCustomStart, customEnd, setCustomEnd, compare, setCompare, hideCompare }) {
   return (
     <div className="bg-white border-2 tel-card rounded-2xl p-3 mb-5 flex flex-wrap items-center gap-2">
       {DATE_PRESETS.map((p) => (
@@ -654,10 +689,12 @@ function DateFilterBar({ preset, setPreset, customStart, setCustomStart, customE
           <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="text-xs border-2 tel-input rounded-lg px-2 py-1.5" />
         </div>
       )}
-      <label className="flex items-center gap-1.5 ml-auto text-xs font-semibold text-blue-400 cursor-pointer">
-        <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />
-        Compare to previous period
-      </label>
+      {!hideCompare && (
+        <label className="flex items-center gap-1.5 ml-auto text-xs font-semibold text-blue-400 cursor-pointer">
+          <input type="checkbox" checked={compare} onChange={(e) => setCompare(e.target.checked)} />
+          Compare to previous period
+        </label>
+      )}
     </div>
   );
 }
@@ -974,6 +1011,10 @@ function PastMappingsView({ franchiseId }) {
   const [error, setError] = useState("");
   const [selected, setSelected] = useState(null);
 
+  const [preset, setPreset] = useState("allTime");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+
   useEffect(() => {
     load();
   }, [franchiseId]);
@@ -994,6 +1035,17 @@ function PastMappingsView({ franchiseId }) {
       .finally(() => setLoading(false));
   }
 
+  const { start, end } = useMemo(() => getRangeForPreset(preset, customStart, customEnd), [preset, customStart, customEnd]);
+  const filteredRows = useMemo(() => filterByRange(rows, start, end), [rows, start, end]);
+
+  const dash = useMemo(() => {
+    const total = filteredRows.length;
+    const done = filteredRows.filter((r) => normalizeStatus(r.status) === "Done").length;
+    const pending = filteredRows.filter((r) => normalizeStatus(r.status) === "Pending").length;
+    const rejected = filteredRows.filter((r) => normalizeStatus(r.status) === "Rejected").length;
+    return { total, done, pending, rejected };
+  }, [filteredRows]);
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -1005,25 +1057,51 @@ function PastMappingsView({ franchiseId }) {
 
       {error && <div className="mb-4 border-2 border-rose-200 bg-rose-50 text-rose-600 text-sm rounded-2xl px-4 py-3">{error}</div>}
 
-      {rows.length === 0 && !loading ? (
-        <p className="text-blue-300 text-sm">No mappings submitted yet.</p>
+      <DateFilterBar
+        preset={preset} setPreset={setPreset}
+        customStart={customStart} setCustomStart={setCustomStart}
+        customEnd={customEnd} setCustomEnd={setCustomEnd}
+        hideCompare
+      />
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <KpiCard label="Total Mappings" value={dash.total} />
+        <KpiCard label="Done" value={dash.done} />
+        <KpiCard label="Pending" value={dash.pending} />
+        <KpiCard label="Rejected" value={dash.rejected} />
+      </div>
+
+      <div className="flex justify-end mb-3">
+        <button
+          onClick={() => exportRowsToXlsx(filteredRows, `${franchiseId}-mappings-${new Date().toISOString().slice(0, 10)}.xlsx`)}
+          className="text-xs font-bold uppercase px-3 py-1.5 rounded-full"
+          style={{ backgroundColor: BRAND.offWhite, color: BRAND.midBlue }}
+        >
+          Export Data (XLSX)
+        </button>
+      </div>
+
+      {filteredRows.length === 0 && !loading ? (
+        <p className="text-blue-300 text-sm">No mappings in this date range.</p>
       ) : (
         <div className="bg-white border-2 tel-card rounded-2xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr style={{ backgroundColor: BRAND.offWhite }}>
+                <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>Date</th>
                 <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>eLoad Number</th>
                 <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>IMEI Number</th>
                 <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>Status</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
+              {filteredRows.map((r, i) => (
                 <tr
                   key={i}
                   onClick={() => setSelected(r)}
                   className="border-t border-blue-50 cursor-pointer hover:bg-blue-50/40"
                 >
+                  <td className="px-4 py-2.5 text-blue-400 text-xs">{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : "—"}</td>
                   <td className="px-4 py-2.5" style={{ color: BRAND.darkBlue }}>{r.easyload}</td>
                   <td className="px-4 py-2.5" style={{ color: BRAND.darkBlue }}>{r.imei}</td>
                   <td className="px-4 py-2.5"><StatusBadge status={r.status} /></td>
@@ -1091,8 +1169,8 @@ function MasterDashboard({ session, onLogout }) {
   const todayCount = useMemo(() => filterByRange(allRows, startOfDay(new Date()), endOfDay(new Date())).length, [allRows]);
   const thisMonthCount = useMemo(() => filterByRange(allRows, startOfMonth(new Date()), endOfDay(new Date())).length, [allRows]);
 
-  const pendingRows = useMemo(() => periodRows.filter((r) => r.status === "Pending" || !r.status), [periodRows]);
-  const allPendingRows = useMemo(() => allRows.filter((r) => r.status === "Pending" || !r.status), [allRows]);
+  const pendingRows = useMemo(() => periodRows.filter((r) => normalizeStatus(r.status) === "Pending"), [periodRows]);
+  const allPendingRows = useMemo(() => allRows.filter((r) => normalizeStatus(r.status) === "Pending"), [allRows]);
   const aging = useMemo(() => computeAging(allPendingRows), [allPendingRows]);
 
   const franchiseStats = useMemo(() => computeFranchiseStats(periodRows), [periodRows]);
@@ -1128,7 +1206,7 @@ function MasterDashboard({ session, onLogout }) {
     if (!search.trim() && !searchStatus) return [];
     const q = search.trim().toLowerCase();
     return allRows.filter((r) => {
-      if (searchStatus && r.status !== searchStatus) return false;
+      if (searchStatus && normalizeStatus(r.status) !== searchStatus) return false;
       if (!q) return true;
       return (
         (r.easyload || "").toLowerCase().includes(q) ||
@@ -1228,14 +1306,26 @@ function MasterDashboard({ session, onLogout }) {
             {/* FRANCHISE INSIGHTS */}
             <SectionHeader title="Franchise Insights" />
             <div className="bg-white border-2 tel-card rounded-2xl p-5 mb-4">
-              <div className="flex items-center gap-3 mb-4 flex-wrap">
-                <span className="text-xs font-bold uppercase" style={{ color: BRAND.midBlue }}>Select a franchise:</span>
-                <select className={inputClass + " max-w-xs"} value={franchiseFilter} onChange={(e) => setFranchiseFilter(e.target.value)}>
-                  <option value="">— Overview (all franchises) —</option>
-                  {franchiseStats.map((f) => (
-                    <option key={f.franchiseId} value={f.franchiseId}>{f.franchiseId}</option>
-                  ))}
-                </select>
+              <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <span className="text-xs font-bold uppercase" style={{ color: BRAND.midBlue }}>Select a franchise:</span>
+                  <select className={inputClass + " max-w-xs"} value={franchiseFilter} onChange={(e) => setFranchiseFilter(e.target.value)}>
+                    <option value="">— Overview (all franchises) —</option>
+                    {franchiseStats.map((f) => (
+                      <option key={f.franchiseId} value={f.franchiseId}>{f.franchiseId}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  onClick={() => exportRowsToXlsx(
+                    franchiseFilter ? periodRows.filter((r) => r.franchiseId === franchiseFilter) : periodRows,
+                    `franchise-insights-${preset}-${new Date().toISOString().slice(0, 10)}.xlsx`
+                  )}
+                  className="text-xs font-bold uppercase px-3 py-1.5 rounded-full"
+                  style={{ backgroundColor: BRAND.offWhite, color: BRAND.midBlue }}
+                >
+                  Export Data (XLSX)
+                </button>
               </div>
 
               {selectedFranchiseStats ? (
@@ -1272,6 +1362,29 @@ function MasterDashboard({ session, onLogout }) {
                         </tr>
                       ))}
                     </tbody>
+                    <tfoot>
+                      <tr className="border-t-2" style={{ borderColor: BRAND.lightBlue, backgroundColor: BRAND.offWhite }}>
+                        <td className="px-3 py-2.5 font-black" style={{ color: BRAND.darkBlue }}>Total</td>
+                        <td className="px-3 py-2.5 font-black" style={{ color: BRAND.darkBlue }}>
+                          {franchiseStats.reduce((s, f) => s + f.total, 0)}
+                        </td>
+                        <td className="px-3 py-2.5 font-black text-emerald-600">
+                          {franchiseStats.reduce((s, f) => s + f.completed, 0)}
+                        </td>
+                        <td className="px-3 py-2.5 font-black text-amber-600">
+                          {franchiseStats.reduce((s, f) => s + f.pending, 0)}
+                        </td>
+                        <td className="px-3 py-2.5 font-black text-rose-600">
+                          {franchiseStats.reduce((s, f) => s + f.rejected, 0)}
+                        </td>
+                        <td className="px-3 py-2.5 font-black" style={{ color: BRAND.darkBlue }}>
+                          {pct(franchiseStats.reduce((s, f) => s + f.completed, 0), franchiseStats.reduce((s, f) => s + f.total, 0))}%
+                        </td>
+                        <td className="px-3 py-2.5 font-black" style={{ color: BRAND.darkBlue }}>
+                          {pct(franchiseStats.reduce((s, f) => s + f.rejected, 0), franchiseStats.reduce((s, f) => s + f.total, 0))}%
+                        </td>
+                      </tr>
+                    </tfoot>
                   </table>
                 </div>
               )}
