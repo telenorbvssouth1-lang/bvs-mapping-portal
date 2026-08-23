@@ -2,13 +2,30 @@ import React, { useState, useEffect, useMemo } from "react";
 import * as XLSX from "xlsx";
 
 // Official Telenor brand colors (brand.telenor.com/group/identity/colors)
-const BRAND = {
+const LIGHT_COLORS = {
   darkBlue: "#070452",
   midBlue: "#1C16C5",
   telenorBlue: "#00C8FF",
   lightBlue: "#B4FFFF",
   offWhite: "#E8FDFF",
 };
+
+// Dark-mode variant. telenorBlue/lightBlue stay the same (they're vibrant
+// accents that read fine on dark backgrounds); darkBlue/midBlue/offWhite
+// are re-purposed as text/pill colors that need to stay legible on dark
+// surfaces instead of near-black-on-white.
+const DARK_COLORS = {
+  darkBlue: "#EAF6FF",
+  midBlue: "#7DD3FC",
+  telenorBlue: "#00C8FF",
+  lightBlue: "#B4FFFF",
+  offWhite: "#152252",
+};
+
+const ThemeContext = React.createContext({ colors: LIGHT_COLORS, mode: "light", toggleTheme: () => {} });
+function useBrand() {
+  return React.useContext(ThemeContext);
+}
 
 // Franchise ID -> password. Edit any password directly here.
 const FRANCHISES = {
@@ -534,6 +551,7 @@ function computeInsights(periodRows, prevRows, franchiseStats, teamStats, reject
 // Small reusable UI pieces
 // ---------------------------------------------------------------------------
 function Field({ label, required, children }) {
+  const { colors: BRAND } = useBrand();
   return (
     <div className="mb-5">
       <span className="block text-xs uppercase text-blue-900/60 font-bold mb-1.5 tracking-wide">
@@ -564,6 +582,7 @@ function StatusBadge({ status }) {
 }
 
 function KpiCard({ label, value, sub }) {
+  const { colors: BRAND } = useBrand();
   return (
     <div className="bg-white border-2 tel-card rounded-2xl px-4 py-3 min-w-[140px]">
       <div className="text-[10px] uppercase font-bold text-blue-400 tracking-wide mb-1">{label}</div>
@@ -574,6 +593,7 @@ function KpiCard({ label, value, sub }) {
 }
 
 function HBar({ label, value, total, color }) {
+  const { colors: BRAND } = useBrand();
   const width = total > 0 ? Math.max((value / total) * 100, value > 0 ? 2 : 0) : 0;
   return (
     <div className="mb-2.5">
@@ -589,6 +609,7 @@ function HBar({ label, value, total, color }) {
 }
 
 function TrendBars({ data, valueKey = "total", height = 90 }) {
+  const { colors: BRAND } = useBrand();
   const max = Math.max(...data.map((d) => d[valueKey]), 1);
   return (
     <div className="flex items-end gap-1" style={{ height }}>
@@ -610,6 +631,7 @@ function TrendBars({ data, valueKey = "total", height = 90 }) {
 }
 
 function Modal({ onClose, children, title }) {
+  const { colors: BRAND } = useBrand();
   return (
     <div
       className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50"
@@ -630,6 +652,7 @@ function Modal({ onClose, children, title }) {
 }
 
 function DetailRow({ label, value }) {
+  const { colors: BRAND } = useBrand();
   return (
     <div className="flex justify-between py-2 border-b border-blue-50 text-sm">
       <span className="text-blue-400">{label}</span>
@@ -666,6 +689,7 @@ function MappingDetailModal({ record, onClose }) {
 }
 
 function DateFilterBar({ preset, setPreset, customStart, setCustomStart, customEnd, setCustomEnd, compare, setCompare, hideCompare }) {
+  const { colors: BRAND } = useBrand();
   return (
     <div className="bg-white border-2 tel-card rounded-2xl p-3 mb-5 flex flex-wrap items-center gap-2">
       {DATE_PRESETS.map((p) => (
@@ -699,10 +723,64 @@ function DateFilterBar({ preset, setPreset, customStart, setCustomStart, customE
   );
 }
 
+function ThemeToggle({ light }) {
+  const { mode, toggleTheme } = useBrand();
+  const isDark = mode === "dark";
+  return (
+    <button
+      onClick={toggleTheme}
+      title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      className="w-9 h-9 rounded-full flex items-center justify-center text-base border-2 transition-colors"
+      style={
+        light
+          ? { borderColor: "rgba(255,255,255,0.3)", color: "#fff" }
+          : { borderColor: "#B4FFFF", color: "#1C16C5" }
+      }
+    >
+      {isDark ? "☀️" : "🌙"}
+    </button>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Main app
 // ---------------------------------------------------------------------------
 export default function BVSPortal() {
+  const [mode, setMode] = useState(() => {
+    try {
+      return localStorage.getItem("bvs_theme") || "light";
+    } catch (e) {
+      return "light";
+    }
+  });
+
+  useEffect(() => {
+    try {
+      document.documentElement.classList.toggle("dark", mode === "dark");
+      localStorage.setItem("bvs_theme", mode);
+    } catch (e) {
+      // ignore
+    }
+  }, [mode]);
+
+  const themeValue = useMemo(
+    () => ({
+      colors: mode === "dark" ? DARK_COLORS : LIGHT_COLORS,
+      mode,
+      toggleTheme: () => setMode((m) => (m === "dark" ? "light" : "dark")),
+    }),
+    [mode]
+  );
+
+  return (
+    <ThemeContext.Provider value={themeValue}>
+      <BVSPortalInner />
+    </ThemeContext.Provider>
+  );
+}
+
+function BVSPortalInner() {
+  const { colors: BRAND } = useBrand();
   const [session, setSession] = useState(() => {
     try {
       const raw = localStorage.getItem("bvs_session");
@@ -756,7 +834,10 @@ export default function BVSPortal() {
   // ---------- LOGIN SCREEN ----------
   if (!session) {
     return (
-      <div className="min-h-screen tel-bg-gradient flex items-center justify-center p-6">
+      <div className="min-h-screen tel-bg-gradient flex items-center justify-center p-6 relative">
+        <div className="absolute top-5 right-5">
+          <ThemeToggle />
+        </div>
         <div className="w-full max-w-sm">
           <div className="text-center mb-8">
             <div
@@ -827,6 +908,7 @@ export default function BVSPortal() {
 // Franchise portal: submission form + Past Mappings view
 // ---------------------------------------------------------------------------
 function FranchisePortal({ franchiseId, onLogout }) {
+  const { colors: BRAND } = useBrand();
   const [view, setView] = useState("form"); // "form" | "past"
 
   return (
@@ -843,6 +925,7 @@ function FranchisePortal({ franchiseId, onLogout }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold" style={{ color: BRAND.lightBlue }}>{franchiseId}</span>
+          <ThemeToggle light />
           <button onClick={onLogout} className="text-white text-sm border-2 border-white/30 hover:border-white/60 rounded-full px-4 py-1.5 font-semibold transition-colors">
             Sign out
           </button>
@@ -878,6 +961,7 @@ function FranchisePortal({ franchiseId, onLogout }) {
 }
 
 function MappingForm({ franchiseId }) {
+  const { colors: BRAND } = useBrand();
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
@@ -1006,6 +1090,7 @@ function MappingForm({ franchiseId }) {
 }
 
 function PastMappingsView({ franchiseId }) {
+  const { colors: BRAND } = useBrand();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1084,32 +1169,55 @@ function PastMappingsView({ franchiseId }) {
       {filteredRows.length === 0 && !loading ? (
         <p className="text-blue-300 text-sm">No mappings in this date range.</p>
       ) : (
-        <div className="bg-white border-2 tel-card rounded-2xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr style={{ backgroundColor: BRAND.offWhite }}>
-                <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>Date</th>
-                <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>eLoad Number</th>
-                <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>IMEI Number</th>
-                <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.map((r, i) => (
-                <tr
-                  key={i}
-                  onClick={() => setSelected(r)}
-                  className="border-t border-blue-50 cursor-pointer hover:bg-blue-50/40"
-                >
-                  <td className="px-4 py-2.5 text-blue-400 text-xs">{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : "—"}</td>
-                  <td className="px-4 py-2.5" style={{ color: BRAND.darkBlue }}>{r.easyload}</td>
-                  <td className="px-4 py-2.5" style={{ color: BRAND.darkBlue }}>{r.imei}</td>
-                  <td className="px-4 py-2.5"><StatusBadge status={r.status} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {/* Mobile: stacked cards (avoids horizontal scrolling cutting off columns) */}
+          <div className="sm:hidden space-y-2">
+            {filteredRows.map((r, i) => (
+              <div
+                key={i}
+                onClick={() => setSelected(r)}
+                className="bg-white border-2 tel-card rounded-2xl px-4 py-3 cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-blue-400 text-xs">{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : "—"}</span>
+                  <StatusBadge status={r.status} />
+                </div>
+                <div className="text-sm font-semibold" style={{ color: BRAND.darkBlue }}>eLoad: {r.easyload}</div>
+                <div className="text-sm" style={{ color: BRAND.darkBlue }}>IMEI: {r.imei}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Larger screens: table */}
+          <div className="hidden sm:block bg-white border-2 tel-card rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr style={{ backgroundColor: BRAND.offWhite }}>
+                    <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>Date</th>
+                    <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>eLoad Number</th>
+                    <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>IMEI Number</th>
+                    <th className="text-left px-4 py-2.5 font-bold text-xs uppercase" style={{ color: BRAND.midBlue }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredRows.map((r, i) => (
+                    <tr
+                      key={i}
+                      onClick={() => setSelected(r)}
+                      className="border-t border-blue-50 cursor-pointer hover:bg-blue-50/40"
+                    >
+                      <td className="px-4 py-2.5 text-blue-400 text-xs whitespace-nowrap">{r.timestamp ? new Date(r.timestamp).toLocaleDateString() : "—"}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: BRAND.darkBlue }}>{r.easyload}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap" style={{ color: BRAND.darkBlue }}>{r.imei}</td>
+                      <td className="px-4 py-2.5 whitespace-nowrap"><StatusBadge status={r.status} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {selected && <MappingDetailModal record={selected} onClose={() => setSelected(null)} />}
@@ -1122,6 +1230,7 @@ function PastMappingsView({ franchiseId }) {
 // "ops" role get the operational subset)
 // ---------------------------------------------------------------------------
 function MasterDashboard({ session, onLogout }) {
+  const { colors: BRAND } = useBrand();
   const [allRows, setAllRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1241,6 +1350,7 @@ function MasterDashboard({ session, onLogout }) {
         </div>
         <div className="flex items-center gap-3">
           <span className="text-sm font-semibold" style={{ color: BRAND.lightBlue }}>{session.name}</span>
+          <ThemeToggle light />
           <button onClick={onLogout} className="text-white text-sm border-2 border-white/30 hover:border-white/60 rounded-full px-4 py-1.5 font-semibold transition-colors">
             Sign out
           </button>
@@ -1528,6 +1638,7 @@ function MasterDashboard({ session, onLogout }) {
 }
 
 function SectionHeader({ title }) {
+  const { colors: BRAND } = useBrand();
   return (
     <h3 className="font-bold text-sm uppercase tracking-wide mb-3 mt-2" style={{ color: BRAND.midBlue }}>
       {title}
