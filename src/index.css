@@ -31,6 +31,14 @@
   background: linear-gradient(180deg, #E8FDFF 0%, #FFFFFF 100%);
 }
 
+/* Mobile browsers (especially iOS Safari) auto-zoom the page when focusing
+   any input/select with a font-size under 16px. This can look like the
+   page "whiting out" and makes it hard to type. Force 16px minimum on all
+   form fields regardless of Tailwind text-size classes applied to them. */
+input, select, textarea {
+  font-size: 16px !important;
+}
+
 /* -------------------------------------------------------------------- */
 /* Dark mode overrides. Applied whenever <html> has the "dark" class,   */
 /* which the app toggles via the theme switch. These target the same    */
