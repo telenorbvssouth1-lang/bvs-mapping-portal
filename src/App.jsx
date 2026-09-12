@@ -630,6 +630,33 @@ function TrendBars({ data, valueKey = "total", height = 90 }) {
   );
 }
 
+const PIE_PALETTE = ["#00C8FF", "#1C16C5", "#070452", "#7DD3FC", "#0EA5E9", "#6366F1", "#94A3B8"];
+
+// Simple pie chart built with a CSS conic-gradient — no charting library needed.
+function PieChart({ data, size = 180 }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  let cumulative = 0;
+  const stops = data.map((d, i) => {
+    const startPct = total > 0 ? (cumulative / total) * 100 : 0;
+    cumulative += d.value;
+    const endPct = total > 0 ? (cumulative / total) * 100 : 0;
+    return `${d.color} ${startPct}% ${endPct}%`;
+  });
+  const gradient = total > 0 ? `conic-gradient(${stops.join(", ")})` : "conic-gradient(#E2E8F0 0% 100%)";
+
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: "50%",
+        background: gradient,
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
 function Modal({ onClose, children, title }) {
   const { colors: BRAND } = useBrand();
   return (
@@ -672,7 +699,7 @@ function MappingDetailModal({ record, onClose }) {
       <DetailRow label="MB Postpaid Number" value={record.postpaid} />
       <DetailRow label="IMEI Number" value={record.imei} />
       <DetailRow label="FS Mapping" value={record.fsMapping} />
-      {record.fsMapping === "Yes FS Mapping" && (
+      {(record.fsMapping === "BVS + FS Mapping" || record.fsMapping === "Only FS Mapping") && (
         <>
           <DetailRow label="EasyPaisa POS Number" value={record.easypaisaPos} />
           <DetailRow label="EP/FS User ID" value={record.epFsUserId} />
@@ -743,6 +770,42 @@ function ThemeToggle({ light }) {
 }
 
 // ---------------------------------------------------------------------------
+// Safety net: if any render error slips through, show a message and a
+// reset button instead of a blank white page.
+// ---------------------------------------------------------------------------
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "#E8FDFF" }}>
+          <div style={{ maxWidth: 420, textAlign: "center" }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+            <div style={{ fontWeight: 800, fontSize: 18, color: "#070452", marginBottom: 8 }}>Something went wrong</div>
+            <div style={{ fontSize: 13, color: "#5C7A99", marginBottom: 20, wordBreak: "break-word" }}>
+              {String((this.state.error && this.state.error.message) || this.state.error)}
+            </div>
+            <button
+              onClick={() => this.setState({ error: null })}
+              style={{ background: "#00C8FF", color: "#fff", fontWeight: 700, border: "none", borderRadius: 999, padding: "10px 24px", cursor: "pointer" }}
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main app
 // ---------------------------------------------------------------------------
 export default function BVSPortal() {
@@ -773,9 +836,11 @@ export default function BVSPortal() {
   );
 
   return (
-    <ThemeContext.Provider value={themeValue}>
-      <BVSPortalInner />
-    </ThemeContext.Provider>
+    <ErrorBoundary>
+      <ThemeContext.Provider value={themeValue}>
+        <BVSPortalInner />
+      </ThemeContext.Provider>
+    </ErrorBoundary>
   );
 }
 
@@ -982,7 +1047,7 @@ function MappingForm({ franchiseId }) {
     if (!form.imei.trim()) e.imei = "Required";
     else if (!/^\d{15}$/.test(form.imei.trim())) e.imei = 'Must be 15 digits, e.g. "350925890354812"';
     if (!form.fsMapping) e.fsMapping = "Required";
-    if (form.fsMapping === "Yes FS Mapping") {
+    if (form.fsMapping === "BVS + FS Mapping" || form.fsMapping === "Only FS Mapping") {
       if (!form.easypaisaPos.trim()) e.easypaisaPos = "Required";
       else if (!/^92\d{10}$/.test(form.easypaisaPos.trim())) e.easypaisaPos = 'Use format 92XXXXXXXXXX, e.g. "923452821234"';
       if (!form.epFsUserId.trim()) e.epFsUserId = "Required";
@@ -1046,13 +1111,14 @@ function MappingForm({ franchiseId }) {
         <Field label="Enter FS Mapping as well?" required>
           <select className={inputClass} value={form.fsMapping} onChange={(e) => updateField("fsMapping", e.target.value)}>
             <option value="">Choose</option>
-            <option value="No FS Mapping">No FS Mapping</option>
-            <option value="Yes FS Mapping">Yes FS Mapping</option>
+            <option value="Only BVS Mapping">Only BVS Mapping</option>
+            <option value="BVS + FS Mapping">BVS + FS Mapping</option>
+            <option value="Only FS Mapping">Only FS Mapping</option>
           </select>
           {errors.fsMapping && <p className="text-rose-500 text-xs mt-1">{errors.fsMapping}</p>}
         </Field>
 
-        {form.fsMapping === "Yes FS Mapping" && (
+        {(form.fsMapping === "BVS + FS Mapping" || form.fsMapping === "Only FS Mapping") && (
           <div className="border-t-2 pt-5 mt-1" style={{ borderColor: BRAND.offWhite }}>
             <div className="text-xs font-black uppercase tracking-widest mb-4" style={{ color: BRAND.telenorBlue }}>FS BVS Mapping</div>
             <Field label="Retailer Easy PAISA POS Number" required>
@@ -1283,6 +1349,17 @@ function MasterDashboard({ session, onLogout }) {
   const aging = useMemo(() => computeAging(allPendingRows), [allPendingRows]);
 
   const franchiseStats = useMemo(() => computeFranchiseStats(periodRows), [periodRows]);
+  const franchisePieData = useMemo(() => {
+    const top = franchiseStats.slice(0, 6).map((f, i) => ({
+      label: f.franchiseId,
+      value: f.total,
+      color: PIE_PALETTE[i % PIE_PALETTE.length],
+    }));
+    const others = franchiseStats.slice(6).reduce((s, f) => s + f.total, 0);
+    if (others > 0) top.push({ label: "Others", value: others, color: PIE_PALETTE[PIE_PALETTE.length - 1] });
+    return top;
+  }, [franchiseStats]);
+  const periodLabel = DATE_PRESETS.find((p) => p.key === preset)?.label || "Selected Period";
   const teamStats = useMemo(() => computeTeamStats(periodRows), [periodRows]);
   const rejectionStats = useMemo(() => computeRejectionStats(periodRows), [periodRows]);
   const dailyVolume = useMemo(() => computeDailyVolume(periodRows), [periodRows]);
@@ -1496,6 +1573,34 @@ function MasterDashboard({ session, onLogout }) {
                       </tr>
                     </tfoot>
                   </table>
+                </div>
+              )}
+            </div>
+
+            {/* FRANCHISE INSIGHTS PIE */}
+            <div className="bg-white border-2 tel-card rounded-2xl p-5 mb-8">
+              <div className="mb-4">
+                <div className="font-bold text-sm" style={{ color: BRAND.darkBlue }}>Franchise Insights Pie</div>
+                <div className="text-xs text-blue-400">Share of mappings by franchise — {periodLabel}</div>
+              </div>
+              {franchisePieData.length === 0 ? (
+                <p className="text-blue-300 text-sm">No mappings in this period.</p>
+              ) : (
+                <div className="flex flex-wrap items-center gap-6">
+                  <PieChart data={franchisePieData} />
+                  <div className="flex-1 min-w-[180px]">
+                    {franchisePieData.map((d) => (
+                      <div key={d.label} className="flex items-center justify-between text-sm mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                          <span style={{ color: BRAND.darkBlue }}>{d.label}</span>
+                        </div>
+                        <span className="text-blue-400 font-semibold">
+                          {d.value} ({pct(d.value, franchisePieData.reduce((s, x) => s + x.value, 0))}%)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
