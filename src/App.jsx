@@ -584,10 +584,10 @@ function StatusBadge({ status }) {
 function KpiCard({ label, value, sub }) {
   const { colors: BRAND } = useBrand();
   return (
-    <div className="bg-white border-2 tel-card rounded-2xl px-4 py-3 w-full">
-      <div className="text-[10px] uppercase font-bold text-blue-400 tracking-wide mb-1">{label}</div>
-      <div className="text-xl font-black" style={{ color: BRAND.darkBlue }}>{value}</div>
-      {sub && <div className="text-[11px] text-blue-300 mt-0.5">{sub}</div>}
+    <div className="flex-shrink-0 bg-white border-2 tel-card rounded-full px-4 py-2 flex items-baseline gap-2 whitespace-nowrap">
+      <span className="text-lg font-black" style={{ color: BRAND.darkBlue }}>{value}</span>
+      <span className="text-[11px] font-bold uppercase text-blue-400 tracking-wide">{label}</span>
+      {sub && <span className="text-[10px] text-blue-300">({sub})</span>}
     </div>
   );
 }
@@ -1213,7 +1213,7 @@ function PastMappingsView({ franchiseId }) {
         hideCompare
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+      <div className="flex flex-wrap gap-2 mb-5">
         <KpiCard label="Total Mappings" value={dash.total} />
         <KpiCard label="Done" value={dash.done} />
         <KpiCard label="Pending" value={dash.pending} />
@@ -1448,7 +1448,7 @@ function MasterDashboard({ session, onLogout }) {
             />
 
             {/* TOP-LEVEL KPI CARDS */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-8">
+            <div className="flex flex-wrap gap-2 mb-8">
               <KpiCard label="Total Mappings (all time)" value={allRows.length} />
               <KpiCard label="Today" value={todayCount} />
               <KpiCard label="This Month" value={thisMonthCount} />
@@ -1512,7 +1512,7 @@ function MasterDashboard({ session, onLogout }) {
               </div>
 
               {selectedFranchiseStats ? (
-                <div className="grid sm:grid-cols-3 gap-3">
+                <div className="flex flex-wrap gap-2">
                   <KpiCard label="Total Submitted" value={selectedFranchiseStats.total} />
                   <KpiCard label="Completed" value={selectedFranchiseStats.completed} />
                   <KpiCard label="Pending" value={selectedFranchiseStats.pending} />
