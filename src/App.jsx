@@ -584,7 +584,7 @@ function StatusBadge({ status }) {
 function KpiCard({ label, value, sub }) {
   const { colors: BRAND } = useBrand();
   return (
-    <div className="bg-white border-2 tel-card rounded-2xl px-4 py-3 min-w-[140px]">
+    <div className="bg-white border-2 tel-card rounded-2xl px-4 py-3 w-full">
       <div className="text-[10px] uppercase font-bold text-blue-400 tracking-wide mb-1">{label}</div>
       <div className="text-xl font-black" style={{ color: BRAND.darkBlue }}>{value}</div>
       {sub && <div className="text-[11px] text-blue-300 mt-0.5">{sub}</div>}
@@ -629,8 +629,6 @@ function TrendBars({ data, valueKey = "total", height = 90 }) {
     </div>
   );
 }
-
-const PIE_PALETTE = ["#00C8FF", "#1C16C5", "#070452", "#7DD3FC", "#0EA5E9", "#6366F1", "#94A3B8"];
 
 // Simple pie chart built with a CSS conic-gradient — no charting library needed.
 function PieChart({ data, size = 180 }) {
@@ -1350,14 +1348,12 @@ function MasterDashboard({ session, onLogout }) {
 
   const franchiseStats = useMemo(() => computeFranchiseStats(periodRows), [periodRows]);
   const franchisePieData = useMemo(() => {
-    const top = franchiseStats.slice(0, 6).map((f, i) => ({
+    const withData = franchiseStats.filter((f) => f.total > 0);
+    return withData.map((f, i) => ({
       label: f.franchiseId,
       value: f.total,
-      color: PIE_PALETTE[i % PIE_PALETTE.length],
+      color: `hsl(${Math.round((i * 360) / Math.max(withData.length, 1))}, 70%, 52%)`,
     }));
-    const others = franchiseStats.slice(6).reduce((s, f) => s + f.total, 0);
-    if (others > 0) top.push({ label: "Others", value: others, color: PIE_PALETTE[PIE_PALETTE.length - 1] });
-    return top;
   }, [franchiseStats]);
   const periodLabel = DATE_PRESETS.find((p) => p.key === preset)?.label || "Selected Period";
   const teamStats = useMemo(() => computeTeamStats(periodRows), [periodRows]);
@@ -1452,7 +1448,7 @@ function MasterDashboard({ session, onLogout }) {
             />
 
             {/* TOP-LEVEL KPI CARDS */}
-            <div className="flex flex-wrap gap-3 mb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-8">
               <KpiCard label="Total Mappings (all time)" value={allRows.length} />
               <KpiCard label="Today" value={todayCount} />
               <KpiCard label="This Month" value={thisMonthCount} />
@@ -1588,7 +1584,7 @@ function MasterDashboard({ session, onLogout }) {
               ) : (
                 <div className="flex flex-wrap items-center gap-6">
                   <PieChart data={franchisePieData} />
-                  <div className="flex-1 min-w-[180px]">
+                  <div className="flex-1 min-w-[180px] max-h-72 overflow-y-auto pr-1">
                     {franchisePieData.map((d) => (
                       <div key={d.label} className="flex items-center justify-between text-sm mb-2">
                         <div className="flex items-center gap-2">
