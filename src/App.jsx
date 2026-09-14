@@ -581,13 +581,44 @@ function StatusBadge({ status }) {
   );
 }
 
-function KpiCard({ label, value, sub }) {
-  const { colors: BRAND } = useBrand();
+const ICON_PATHS = {
+  list: <path d="M4 6h12M4 10h12M4 14h8" />,
+  calendar: <><rect x="3" y="4" width="14" height="13" rx="2" /><path d="M3 8h14M7 2v4M13 2v4" /></>,
+  clock: <><circle cx="10" cy="10" r="7" /><path d="M10 6v4l3 2" /></>,
+  check: <path d="M4 10l4 4 8-8" />,
+  x: <path d="M5 5l10 10M15 5L5 15" />,
+  percent: <><circle cx="6.5" cy="6.5" r="2" /><circle cx="13.5" cy="13.5" r="2" /><path d="M15 5L5 15" /></>,
+  building: <><rect x="4" y="3" width="12" height="14" rx="1" /><path d="M7 7h1M12 7h1M7 10h1M12 10h1M7 13h1M12 13h1" /></>,
+  alert: <><path d="M10 3l8 14H2z" /><path d="M10 8v4M10 14h.01" /></>,
+};
+
+function Icon({ name, size = 18 }) {
   return (
-    <div className="flex-shrink-0 bg-white border-2 tel-card rounded-full px-4 py-2 flex items-baseline gap-2 whitespace-nowrap">
-      <span className="text-lg font-black" style={{ color: BRAND.darkBlue }}>{value}</span>
-      <span className="text-[11px] font-bold uppercase text-blue-400 tracking-wide">{label}</span>
-      {sub && <span className="text-[10px] text-blue-300">({sub})</span>}
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      {ICON_PATHS[name] || ICON_PATHS.list}
+    </svg>
+  );
+}
+
+function KpiCard({ label, value, sub, icon = "list", tone = "neutral" }) {
+  const { colors: BRAND } = useBrand();
+  const toneClass =
+    tone === "success" ? "bg-emerald-50 text-emerald-600" :
+    tone === "warning" ? "bg-amber-50 text-amber-600" :
+    tone === "danger" ? "bg-rose-50 text-rose-600" : "";
+  return (
+    <div className="bg-white border-2 tel-card rounded-2xl p-4 flex items-center gap-3 w-full">
+      <div
+        className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${toneClass}`}
+        style={tone === "neutral" ? { backgroundColor: BRAND.offWhite, color: BRAND.telenorBlue } : undefined}
+      >
+        <Icon name={icon} />
+      </div>
+      <div className="min-w-0">
+        <div className="text-lg font-black leading-tight truncate" style={{ color: BRAND.darkBlue }}>{value}</div>
+        <div className="text-[10px] font-bold uppercase text-blue-400 tracking-wide truncate">{label}</div>
+        {sub && <div className="text-[10px] text-blue-300">{sub}</div>}
+      </div>
     </div>
   );
 }
@@ -630,28 +661,81 @@ function TrendBars({ data, valueKey = "total", height = 90 }) {
   );
 }
 
-// Simple pie chart built with a CSS conic-gradient — no charting library needed.
-function PieChart({ data, size = 180 }) {
+// Interactive donut chart: hover shows a tooltip + highlights the slice,
+// clicking a slice calls onSliceClick(datum) if provided.
+function PieChart({ data, size = 180, thickness = 26, onSliceClick }) {
+  const [hover, setHover] = useState(null); // { index, x, y }
   const total = data.reduce((s, d) => s + d.value, 0);
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const cx = size / 2, cy = size / 2;
   let cumulative = 0;
-  const stops = data.map((d, i) => {
-    const startPct = total > 0 ? (cumulative / total) * 100 : 0;
-    cumulative += d.value;
-    const endPct = total > 0 ? (cumulative / total) * 100 : 0;
-    return `${d.color} ${startPct}% ${endPct}%`;
-  });
-  const gradient = total > 0 ? `conic-gradient(${stops.join(", ")})` : "conic-gradient(#E2E8F0 0% 100%)";
+
+  function handleMove(e, i) {
+    const rect = e.currentTarget.ownerSVGElement.getBoundingClientRect();
+    setHover({ index: i, x: e.clientX - rect.left, y: e.clientY - rect.top });
+  }
+  function handleLeave(i) {
+    setHover((h) => (h && h.index === i ? null : h));
+  }
 
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderRadius: "50%",
-        background: gradient,
-        flexShrink: 0,
-      }}
-    />
+    <div style={{ position: "relative", width: size, height: size, flexShrink: 0 }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: "rotate(-90deg)" }}>
+        {total === 0 ? (
+          <circle cx={cx} cy={cy} r={radius} fill="none" stroke="#E2E8F0" strokeWidth={thickness} />
+        ) : (
+          data.map((d, i) => {
+            const len = (d.value / total) * circumference;
+            const dasharray = `${len} ${circumference - len}`;
+            const dashoffset = -cumulative;
+            cumulative += len;
+            const isHovered = hover && hover.index === i;
+            return (
+              <circle
+                key={i}
+                cx={cx}
+                cy={cy}
+                r={radius}
+                fill="none"
+                stroke={d.color}
+                strokeWidth={isHovered ? thickness + 6 : thickness}
+                strokeDasharray={dasharray}
+                strokeDashoffset={dashoffset}
+                style={{
+                  cursor: onSliceClick && d.clickable !== false ? "pointer" : "default",
+                  transition: "stroke-width 0.15s ease, opacity 0.15s ease",
+                  opacity: hover && !isHovered ? 0.5 : 1,
+                }}
+                onMouseMove={(e) => handleMove(e, i)}
+                onMouseLeave={() => handleLeave(i)}
+                onClick={() => onSliceClick && d.clickable !== false && onSliceClick(d)}
+              />
+            );
+          })
+        )}
+      </svg>
+      {hover && data[hover.index] && (
+        <div
+          style={{
+            position: "absolute",
+            left: Math.min(hover.x + 12, size - 130),
+            top: Math.min(hover.y + 12, size - 36),
+            background: "#0B1330",
+            color: "#fff",
+            fontSize: 12,
+            fontWeight: 700,
+            padding: "6px 10px",
+            borderRadius: 8,
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+            zIndex: 10,
+          }}
+        >
+          {data[hover.index].label}: {data[hover.index].value} ({pct(data[hover.index].value, total)}%)
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1213,11 +1297,11 @@ function PastMappingsView({ franchiseId }) {
         hideCompare
       />
 
-      <div className="flex flex-wrap gap-2 mb-5">
-        <KpiCard label="Total Mappings" value={dash.total} />
-        <KpiCard label="Done" value={dash.done} />
-        <KpiCard label="Pending" value={dash.pending} />
-        <KpiCard label="Rejected" value={dash.rejected} />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+        <KpiCard label="Total Mappings" value={dash.total} icon="list" tone="neutral" />
+        <KpiCard label="Done" value={dash.done} icon="check" tone="success" />
+        <KpiCard label="Pending" value={dash.pending} icon="clock" tone="warning" />
+        <KpiCard label="Rejected" value={dash.rejected} icon="x" tone="danger" />
       </div>
 
       <div className="flex justify-end mb-3">
@@ -1349,12 +1433,35 @@ function MasterDashboard({ session, onLogout }) {
   const franchiseStats = useMemo(() => computeFranchiseStats(periodRows), [periodRows]);
   const franchisePieData = useMemo(() => {
     const withData = franchiseStats.filter((f) => f.total > 0);
-    return withData.map((f, i) => ({
+    const top = withData.slice(0, 15);
+    const rest = withData.slice(15);
+    const colorCount = top.length + (rest.length > 0 ? 1 : 0);
+    const slices = top.map((f, i) => ({
       label: f.franchiseId,
       value: f.total,
-      color: `hsl(${Math.round((i * 360) / Math.max(withData.length, 1))}, 70%, 52%)`,
+      color: `hsl(${Math.round((i * 360) / Math.max(colorCount, 1))}, 70%, 52%)`,
     }));
+    if (rest.length > 0) {
+      slices.push({
+        label: "Others",
+        value: rest.reduce((s, f) => s + f.total, 0),
+        color: "#94A3B8",
+        clickable: false,
+      });
+    }
+    return slices;
   }, [franchiseStats]);
+  const [drilldownFranchise, setDrilldownFranchise] = useState(null);
+  const drilldownData = useMemo(() => {
+    if (!drilldownFranchise) return null;
+    const f = franchiseStats.find((x) => x.franchiseId === drilldownFranchise);
+    if (!f) return null;
+    return [
+      { label: "Done", value: f.completed, color: "#059669" },
+      { label: "Pending", value: f.pending, color: "#D97706" },
+      { label: "Rejected", value: f.rejected, color: "#E11D48" },
+    ];
+  }, [drilldownFranchise, franchiseStats]);
   const periodLabel = DATE_PRESETS.find((p) => p.key === preset)?.label || "Selected Period";
   const teamStats = useMemo(() => computeTeamStats(periodRows), [periodRows]);
   const rejectionStats = useMemo(() => computeRejectionStats(periodRows), [periodRows]);
@@ -1448,18 +1555,18 @@ function MasterDashboard({ session, onLogout }) {
             />
 
             {/* TOP-LEVEL KPI CARDS */}
-            <div className="flex flex-wrap gap-2 mb-8">
-              <KpiCard label="Total Mappings (all time)" value={allRows.length} />
-              <KpiCard label="Today" value={todayCount} />
-              <KpiCard label="This Month" value={thisMonthCount} />
-              <KpiCard label="Pending (period)" value={kpis.pending} sub={compare ? delta(kpis.pending, prevKpis?.pending) : null} />
-              <KpiCard label="Completed (period)" value={kpis.completed} sub={compare ? delta(kpis.completed, prevKpis?.completed) : null} />
-              <KpiCard label="Rejected (period)" value={kpis.rejected} sub={compare ? delta(kpis.rejected, prevKpis?.rejected) : null} />
-              <KpiCard label="Completion Rate" value={`${kpis.completionRate}%`} sub={compare ? delta(kpis.completionRate, prevKpis?.completionRate) : null} />
-              <KpiCard label="Rejection Rate" value={`${kpis.rejectionRate}%`} sub={compare ? delta(kpis.rejectionRate, prevKpis?.rejectionRate) : null} />
-              <KpiCard label="Avg Processing Time" value={fmtHours(kpis.avgProcessingHours)} />
-              <KpiCard label="Franchises Submitting" value={kpis.totalFranchises} />
-              <KpiCard label="Total Processed" value={kpis.totalProcessed} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-8">
+              <KpiCard label="Total Mappings (all time)" value={allRows.length} icon="list" tone="neutral" />
+              <KpiCard label="Today" value={todayCount} icon="calendar" tone="neutral" />
+              <KpiCard label="This Month" value={thisMonthCount} icon="calendar" tone="neutral" />
+              <KpiCard label="Pending (period)" value={kpis.pending} sub={compare ? delta(kpis.pending, prevKpis?.pending) : null} icon="clock" tone="warning" />
+              <KpiCard label="Completed (period)" value={kpis.completed} sub={compare ? delta(kpis.completed, prevKpis?.completed) : null} icon="check" tone="success" />
+              <KpiCard label="Rejected (period)" value={kpis.rejected} sub={compare ? delta(kpis.rejected, prevKpis?.rejected) : null} icon="x" tone="danger" />
+              <KpiCard label="Completion Rate" value={`${kpis.completionRate}%`} sub={compare ? delta(kpis.completionRate, prevKpis?.completionRate) : null} icon="percent" tone="success" />
+              <KpiCard label="Rejection Rate" value={`${kpis.rejectionRate}%`} sub={compare ? delta(kpis.rejectionRate, prevKpis?.rejectionRate) : null} icon="percent" tone="danger" />
+              <KpiCard label="Avg Processing Time" value={fmtHours(kpis.avgProcessingHours)} icon="clock" tone="neutral" />
+              <KpiCard label="Franchises Submitting" value={kpis.totalFranchises} icon="building" tone="neutral" />
+              <KpiCard label="Total Processed" value={kpis.totalProcessed} icon="check" tone="neutral" />
             </div>
 
             {/* OPERATIONS: PENDING WORKLOAD */}
@@ -1512,15 +1619,15 @@ function MasterDashboard({ session, onLogout }) {
               </div>
 
               {selectedFranchiseStats ? (
-                <div className="flex flex-wrap gap-2">
-                  <KpiCard label="Total Submitted" value={selectedFranchiseStats.total} />
-                  <KpiCard label="Completed" value={selectedFranchiseStats.completed} />
-                  <KpiCard label="Pending" value={selectedFranchiseStats.pending} />
-                  <KpiCard label="Rejected" value={selectedFranchiseStats.rejected} />
-                  <KpiCard label="Completion %" value={`${selectedFranchiseStats.completionPct}%`} />
-                  <KpiCard label="Rejection %" value={`${selectedFranchiseStats.rejectionPct}%`} />
-                  <KpiCard label="Most Recent Submission" value={fmtDate(selectedFranchiseStats.lastSubmission)} />
-                  <KpiCard label="Top Rejection Reason" value={selectedFranchiseStats.topRejectionReason || "—"} />
+                <div className="grid sm:grid-cols-3 gap-3">
+                  <KpiCard label="Total Submitted" value={selectedFranchiseStats.total} icon="list" tone="neutral" />
+                  <KpiCard label="Completed" value={selectedFranchiseStats.completed} icon="check" tone="success" />
+                  <KpiCard label="Pending" value={selectedFranchiseStats.pending} icon="clock" tone="warning" />
+                  <KpiCard label="Rejected" value={selectedFranchiseStats.rejected} icon="x" tone="danger" />
+                  <KpiCard label="Completion %" value={`${selectedFranchiseStats.completionPct}%`} icon="percent" tone="success" />
+                  <KpiCard label="Rejection %" value={`${selectedFranchiseStats.rejectionPct}%`} icon="percent" tone="danger" />
+                  <KpiCard label="Most Recent Submission" value={fmtDate(selectedFranchiseStats.lastSubmission)} icon="calendar" tone="neutral" />
+                  <KpiCard label="Top Rejection Reason" value={selectedFranchiseStats.topRejectionReason || "—"} icon="alert" tone="danger" />
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -1574,19 +1681,23 @@ function MasterDashboard({ session, onLogout }) {
             </div>
 
             {/* FRANCHISE INSIGHTS PIE */}
-            <div className="bg-white border-2 tel-card rounded-2xl p-5 mb-8">
+            <div className="bg-white border-2 tel-card rounded-2xl p-5 mb-4">
               <div className="mb-4">
                 <div className="font-bold text-sm" style={{ color: BRAND.darkBlue }}>Franchise Insights Pie</div>
-                <div className="text-xs text-blue-400">Share of mappings by franchise — {periodLabel}</div>
+                <div className="text-xs text-blue-400">Top 15 franchises (rest grouped as Others) — {periodLabel}. Click a slice for its Done/Pending/Rejected split.</div>
               </div>
               {franchisePieData.length === 0 ? (
                 <p className="text-blue-300 text-sm">No mappings in this period.</p>
               ) : (
                 <div className="flex flex-wrap items-center gap-6">
-                  <PieChart data={franchisePieData} />
+                  <PieChart data={franchisePieData} onSliceClick={(d) => setDrilldownFranchise(d.label)} />
                   <div className="flex-1 min-w-[180px] max-h-72 overflow-y-auto pr-1">
                     {franchisePieData.map((d) => (
-                      <div key={d.label} className="flex items-center justify-between text-sm mb-2">
+                      <div
+                        key={d.label}
+                        onClick={() => d.clickable !== false && setDrilldownFranchise(d.label)}
+                        className={`flex items-center justify-between text-sm mb-2 ${d.clickable !== false ? "cursor-pointer hover:opacity-70" : ""}`}
+                      >
                         <div className="flex items-center gap-2">
                           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
                           <span style={{ color: BRAND.darkBlue }}>{d.label}</span>
@@ -1600,6 +1711,40 @@ function MasterDashboard({ session, onLogout }) {
                 </div>
               )}
             </div>
+
+            {drilldownFranchise && drilldownData && (
+              <div className="bg-white border-2 tel-card rounded-2xl p-5 mb-8">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-bold text-sm" style={{ color: BRAND.darkBlue }}>{drilldownFranchise} — Status Breakdown</div>
+                    <div className="text-xs text-blue-400">Done / Pending / Rejected — {periodLabel}</div>
+                  </div>
+                  <button
+                    onClick={() => setDrilldownFranchise(null)}
+                    className="text-xs font-bold uppercase px-3 py-1.5 rounded-full"
+                    style={{ backgroundColor: BRAND.offWhite, color: BRAND.midBlue }}
+                  >
+                    Close ✕
+                  </button>
+                </div>
+                <div className="flex flex-wrap items-center gap-6">
+                  <PieChart data={drilldownData} size={140} thickness={22} />
+                  <div className="flex-1 min-w-[160px]">
+                    {drilldownData.map((d) => (
+                      <div key={d.label} className="flex items-center justify-between text-sm mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                          <span style={{ color: BRAND.darkBlue }}>{d.label}</span>
+                        </div>
+                        <span className="text-blue-400 font-semibold">
+                          {d.value} ({pct(d.value, drilldownData.reduce((s, x) => s + x.value, 0))}%)
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {isSuper && (
               <>
