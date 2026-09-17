@@ -165,7 +165,7 @@ function jsonpRequest(url) {
         reject(new Error("Request timed out"));
         cleanup();
       }
-    }, 20000);
+    }, 35000);
   });
 }
 
