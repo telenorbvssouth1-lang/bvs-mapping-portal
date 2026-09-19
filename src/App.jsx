@@ -615,8 +615,8 @@ function KpiCard({ label, value, sub, icon = "list", tone = "neutral" }) {
         <Icon name={icon} />
       </div>
       <div className="min-w-0">
-        <div className="text-lg font-black leading-tight truncate" style={{ color: BRAND.darkBlue }}>{value}</div>
-        <div className="text-[10px] font-bold uppercase text-blue-400 tracking-wide truncate">{label}</div>
+        <div className="text-lg font-black leading-tight" style={{ color: BRAND.darkBlue }}>{value}</div>
+        <div className="text-[10px] font-bold uppercase text-blue-400 tracking-wide leading-snug">{label}</div>
         {sub && <div className="text-[10px] text-blue-300">{sub}</div>}
       </div>
     </div>
@@ -1112,8 +1112,10 @@ function MappingForm({ franchiseId }) {
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [slowNotice, setSlowNotice] = useState(false);
   const [justSubmitted, setJustSubmitted] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const submitLockRef = React.useRef(false);
 
   function updateField(key, value) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -1140,9 +1142,18 @@ function MappingForm({ franchiseId }) {
   }
 
   async function handleSubmit() {
+    // Synchronous guard — blocks a second tap immediately, even one that
+    // fires before React has re-rendered the disabled button (the actual
+    // cause of the duplicate-row bug: rapid double-taps both firing before
+    // "submitting" state updated in time to disable the button).
+    if (submitLockRef.current) return;
     if (!validate()) return;
+    submitLockRef.current = true;
+
     setSubmitting(true);
     setSubmitError("");
+    setSlowNotice(false);
+    const slowTimer = setTimeout(() => setSlowNotice(true), 8000);
 
     const record = { franchiseId, ...form, submittedAt: new Date().toISOString() };
 
@@ -1155,7 +1166,10 @@ function MappingForm({ franchiseId }) {
     } catch (err) {
       setSubmitError("Couldn't sync to the sheet: " + ((err && err.message) || "unknown error"));
     } finally {
+      clearTimeout(slowTimer);
+      setSlowNotice(false);
       setSubmitting(false);
+      submitLockRef.current = false;
     }
   }
 
@@ -1214,9 +1228,14 @@ function MappingForm({ franchiseId }) {
           </div>
         )}
 
-        <button onClick={handleSubmit} disabled={submitting} className="w-full tel-btn-primary disabled:opacity-60 text-white font-bold rounded-full py-3 mt-2">
+        <button onClick={handleSubmit} disabled={submitting} className={`w-full tel-btn-primary disabled:opacity-60 text-white font-bold rounded-full py-3 mt-2 ${submitting ? "pointer-events-none" : ""}`}>
           {submitting ? "Submitting…" : "Submit mapping"}
         </button>
+        {slowNotice && (
+          <p className="text-center text-xs text-blue-400 mt-2">
+            Still working — please don't tap again, this can take a moment on a slow connection.
+          </p>
+        )}
       </div>
 
       <div className="mt-6 border-2 tel-card rounded-2xl px-5 py-4 bg-white">
